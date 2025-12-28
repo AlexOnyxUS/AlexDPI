@@ -1,89 +1,75 @@
 @echo off
-title AlexDPI v6.1 - Disorder Optimization
+title AlexDPI v4.2 - Multi-Strategy Edition
 chcp 65001 >nul
 cd /d "%~dp0"
 
-:: Проверка прав администратора
+:: Проверка прав
 net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo [!] ЗАПУСТИ ОТ АДМИНА!
-    pause
-    exit
-)
+if %errorLevel% neq 0 (echo [!] Запусти от Админа! & pause & exit)
 
 :MENU
 cls
+echo ========================================================
+echo                ALEX-DPI: 7 СТРАТЕГИЙ ОБХОДА
+echo ========================================================
+echo  Используется список: list.txt (должен быть рядом)
 echo.
-echo  ----------------------------------------------------------
-echo     ___   _       _______  _  _    ____   ____   _ 
-echo    / _ \ / \     |  ____/ | || |  |  _ \ |  _ \ | |
-echo   / /_\ \\ \     | |__    \  /   | | | || |_) || |
-echo   |  _  | \ \    |  __|   /  \   | | | ||  __/ | |
-echo   | | | | / /___ | |____ / /\ \  | |_| || |    | |
-echo   |_| |_|/_____/ |______/_/  \_\ |____/ |_|    |_|
+echo  1) SAFE: Split2 (Минимальный риск)
+echo  2) ADVANCED: Disorder (Стандарт)
+echo  3) FAKE: Fake Packet (Подмена данных)
+echo  4) TTL: Auto TTL (Обход через время жизни пакета)
+echo  5) MIX: Disorder + No-Frag (Смешанный)
+echo  6) HYBRID: Split + Fake (Для сложных блокировок)
+echo  7) EXTREME: All-In-One (Максимальный пробив)
 echo.
-echo  ----------------------------------------------------------
-echo               PROJECT: AlexDPI v6.1
-echo  ----------------------------------------------------------
-echo.
-echo   1) STRAT: DISORDER (Стандарт)
-echo   2) STRAT: DISORDER-UDP (YouTube Fix + NoQUIC)
-echo   3) STRAT: DISORDER-SEQ (Advanced Overlay)
-echo   4) STRAT: DISORDER-AUTO-TTL (Smart distance)
-echo.
-echo   5) STOP / RESET
-echo   6) EXIT
-echo.
-echo  ----------------------------------------------------------
+echo  0) ОСТАНОВИТЬ ВСЁ И СБРОСИТЬ СЕТЬ
+echo  E) ВЫХОД
+echo ========================================================
 set /p opt="Выбор стратегии: "
 
-if "%opt%"=="1" goto RUN_DIS
-if "%opt%"=="2" goto RUN_DIS_UDP
-if "%opt%"=="3" goto RUN_DIS_SEQ
-if "%opt%"=="4" goto RUN_DIS_TTL
-if "%opt%"=="5" goto STOP
-if "%opt%"=="6" exit
+if "%opt%"=="1" set "ARGS=--dpi-desync=split2 --dpi-desync-split-pos=2"
+if "%opt%"=="2" set "ARGS=--dpi-desync=disorder2 --dpi-desync-split-pos=1"
+if "%opt%"=="3" set "ARGS=--dpi-desync=fake --dpi-desync-ttl=5"
+if "%opt%"=="4" set "ARGS=--dpi-desync=split2 --dpi-desync-autottl=2"
+if "%opt%"=="5" set "ARGS=--dpi-desync=disorder2 --dpi-desync-split-pos=2 --hostcase"
+if "%opt%"=="6" set "ARGS=--dpi-desync=split2 --dpi-desync-split-pos=mame --dpi-desync-fake-http=0x00000000"
+if "%opt%"=="7" set "ARGS=--dpi-desync=fake,disorder2 --dpi-desync-split-pos=1 --dpi-desync-ttl=11"
+
+if "%opt%"=="0" goto RESET_NET
+if /i "%opt%"=="e" goto EXIT_PROG
+if defined ARGS goto RUN
+
 goto MENU
 
-:RUN_DIS
-call :PREPARE
-echo [*] Запуск: Стандартный Disorder...
-start /b winws.exe --wf-l3=ipv4 --wf-tcp=80,443 --dpi-desync=disorder2 --dpi-desync-split-pos=1
-echo [+] Активно.
+:RUN
+call :KILL_PROC
+echo [*] Запуск выбранной стратегии...
+:: Проверяем наличие файла со списком
+if exist "list.txt" (
+    set "LIST_ARG=--hostlist=list.txt"
+    echo [+] Использую список доменов из list.txt
+) else (
+    set "LIST_ARG="
+    echo [!] list.txt не найден. Применяю ко всему трафику!
+)
+
+start /b "" winws.exe --wf-l3=ipv4 --wf-tcp=80,443 %LIST_ARG% %ARGS%
+echo [+] Процесс запущен в фоне.
 pause
 goto MENU
 
-:RUN_DIS_UDP
-call :PREPARE
-echo [*] Запуск: Disorder + QUIC Block...
-start /b winws.exe --wf-l3=ipv4 --wf-udp=443 --dpi-desync=fake --new --wf-tcp=80,443 --dpi-desync=disorder2 --dpi-desync-split-pos=1
-echo [+] Активно. Проверяй YouTube.
+:RESET_NET
+call :KILL_PROC
+netsh int ip reset >nul
+netsh winsock reset >nul
+echo [OK] Все процессы убиты, сетевые настройки сброшены.
 pause
 goto MENU
 
-:RUN_DIS_SEQ
-call :PREPARE
-echo [*] Запуск: Disorder Sequence Overlay...
-start /b winws.exe --wf-l3=ipv4 --wf-tcp=80,443 --dpi-desync=disorder2 --dpi-desync-split-pos=1 --dpi-desync-split-seqovl=1
-echo [+] Активно.
-pause
-goto MENU
+:EXIT_PROG
+call :KILL_PROC
+exit
 
-:RUN_DIS_TTL
-call :PREPARE
-echo [*] Запуск: Disorder + Auto-TTL...
-start /b winws.exe --wf-l3=ipv4 --wf-tcp=80,443 --dpi-desync=disorder2 --dpi-desync-split-pos=1 --dpi-desync-autottl=2
-echo [+] Активно.
-pause
-goto MENU
-
-:PREPARE
-taskkill /f /im winws.exe >nul 2>&1
-ipconfig /flushdns >nul
+:KILL_PROC
+taskkill /f /t /im winws.exe >nul 2>&1
 exit /b
-
-:STOP
-taskkill /f /im winws.exe >nul 2>&1
-echo [!] Процессы остановлены.
-pause
-goto MENU
